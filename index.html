@@ -165,6 +165,26 @@
         background-color: var(--bg-color);
       }
 
+      th.sortable {
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.15s ease;
+      }
+
+      th.sortable:hover {
+        background-color: var(--card-bg);
+      }
+
+      .sort-icon {
+        margin-left: 0.3rem;
+        font-size: 0.75rem;
+        opacity: 0.5;
+      }
+
+      th.sortable.active .sort-icon {
+        opacity: 1;
+      }
+
       tr.json-row {
         background-color: var(--bg-color);
       }
@@ -212,8 +232,12 @@
     <table>
       <thead>
         <tr>
-          <th>Title</th>
-          <th>Last Updated</th>
+          <th class="sortable" data-sort="name">
+            Title <span class="sort-icon" id="sort-name">↕</span>
+          </th>
+          <th class="sortable" data-sort="updated_at">
+            Last Updated <span class="sort-icon" id="sort-updated_at">↕</span>
+          </th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -293,6 +317,20 @@
           this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
         }
 
+        renderSortIndicators(currentField, currentDirection) {
+          document.querySelectorAll("th.sortable").forEach((th) => {
+            const field = th.dataset.sort;
+            const icon = th.querySelector(".sort-icon");
+            if (field === currentField) {
+              th.classList.add("active");
+              icon.textContent = currentDirection === "asc" ? "▲" : "▼";
+            } else {
+              th.classList.remove("active");
+              icon.textContent = "↕";
+            }
+          });
+        }
+
         renderData(data) {
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
@@ -311,17 +349,19 @@
                 day: "numeric",
               });
 
+              const rowId = repo.id || index;
+
               return `
                 <tr>
                   <td><a href="${repo.html_url}" target="_blank" rel="noopener noreferrer"><strong>${repo.name}</strong></a></td>
                   <td>${formattedDate}</td>
                   <td>
                     <div class="actions-cell">
-                      <button class="action-btn secondary toggle-json-btn" data-index="${index}">View JSON</button>
+                      <button class="action-btn secondary toggle-json-btn" data-row-id="${rowId}">View JSON</button>
                     </div>
                   </td>
                 </tr>
-                <tr id="json-row-${index}" class="json-row hidden">
+                <tr id="json-row-${rowId}" class="json-row hidden">
                   <td colspan="3">
                     <pre>${JSON.stringify(repo, null, 2)}</pre>
                   </td>
@@ -334,8 +374,8 @@
             .querySelectorAll(".toggle-json-btn")
             .forEach((button) => {
               button.addEventListener("click", (event) => {
-                const { index } = event.currentTarget.dataset;
-                const jsonRow = document.getElementById(`json-row-${index}`);
+                const { rowId } = event.currentTarget.dataset;
+                const jsonRow = document.getElementById(`json-row-${rowId}`);
                 const isHidden = jsonRow.classList.toggle("hidden");
                 event.currentTarget.textContent = isHidden
                   ? "View JSON"
@@ -354,6 +394,44 @@
         constructor(fetcher, renderer) {
           this.fetcher = fetcher;
           this.renderer = renderer;
+          this.repositories = [];
+          this.sortField = "name";
+          this.sortDirection = "asc";
+        }
+
+        handleSortClick(field) {
+          if (this.sortField === field) {
+            this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
+          } else {
+            this.sortField = field;
+            this.sortDirection = field === "name" ? "asc" : "desc";
+          }
+          this.applySort();
+        }
+
+        applySort() {
+          const modifier = this.sortDirection === "asc" ? 1 : -1;
+          this.repositories.sort((a, b) => {
+            let valA = a[this.sortField];
+            let valB = b[this.sortField];
+
+            if (this.sortField === "updated_at") {
+              valA = new Date(valA).getTime();
+              valB = new Date(valB).getTime();
+            } else if (typeof valA === "string") {
+              return valA.localeCompare(valB) * modifier;
+            }
+
+            if (valA < valB) return -1 * modifier;
+            if (valA > valB) return 1 * modifier;
+            return 0;
+          });
+
+          this.renderer.renderSortIndicators(
+            this.sortField,
+            this.sortDirection,
+          );
+          this.renderer.renderData(this.repositories);
         }
 
         async loadUserRepos(username) {
@@ -361,8 +439,9 @@
           try {
             const { data, rateLimit } =
               await this.fetcher.fetchRepositories(username);
+            this.repositories = data || [];
             this.renderer.renderRateLimit(rateLimit);
-            this.renderer.renderData(data);
+            this.applySort();
           } catch (error) {
             if (error.rateLimit) {
               this.renderer.renderRateLimit(error.rateLimit);
@@ -381,6 +460,12 @@
       const apiService = new GitHubApiService();
       const renderer = new ViewRenderer(output, tableBody, rateLimitBadge);
       const app = new AppController(apiService, renderer);
+
+      document.querySelectorAll("th.sortable").forEach((th) => {
+        th.addEventListener("click", () => {
+          app.handleSortClick(th.dataset.sort);
+        });
+      });
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
