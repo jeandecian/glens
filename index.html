@@ -12,7 +12,14 @@
         --card-bg: #f6f8fa;
         --border-color: #d0d7de;
         --btn-bg: #2da44e;
+        --btn-hover-bg: #1a7f37;
         --btn-text: #ffffff;
+        --link-color: #0969da;
+
+        --btn-sec-bg: #f3f4f6;
+        --btn-sec-text: #24292f;
+        --btn-sec-border: rgba(31, 35, 40, 0.15);
+        --btn-sec-hover: #efeff1;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -22,7 +29,14 @@
           --card-bg: #161b22;
           --border-color: #30363d;
           --btn-bg: #238636;
+          --btn-hover-bg: #2ea043;
           --btn-text: #ffffff;
+          --link-color: #58a6ff;
+
+          --btn-sec-bg: #21262d;
+          --btn-sec-text: #c9d1d9;
+          --btn-sec-border: #30363d;
+          --btn-sec-hover: #30363d;
         }
       }
 
@@ -58,15 +72,90 @@
         font-size: 1rem;
       }
 
-      button {
+      button[type="submit"] {
         padding: 0.5rem 1rem;
         border-radius: 6px;
-        border: none;
+        border: 1px solid rgba(27, 31, 36, 0.15);
         background-color: var(--btn-bg);
         color: var(--btn-text);
         font-size: 1rem;
         cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.2s ease;
+      }
+
+      button[type="submit"]:hover {
+        background-color: var(--btn-hover-bg);
+      }
+
+      .action-btn {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.85rem;
+        border-radius: 6px;
+        cursor: pointer;
         font-weight: 500;
+        transition:
+          background-color 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      .action-btn.secondary {
+        background-color: var(--btn-sec-bg);
+        color: var(--btn-sec-text);
+        border: 1px solid var(--btn-sec-border);
+      }
+
+      .action-btn.secondary:hover {
+        background-color: var(--btn-sec-hover);
+      }
+
+      .actions-cell {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      a {
+        color: var(--link-color);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5rem;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      th,
+      td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      th {
+        background-color: var(--bg-color);
+      }
+
+      tr.json-row {
+        background-color: var(--bg-color);
+      }
+
+      tr.json-row pre {
+        margin: 0;
+        max-height: 300px;
+      }
+
+      tr.hidden {
+        display: none;
       }
 
       pre {
@@ -94,6 +183,21 @@
       />
       <button type="submit">Fetch Repos</button>
     </form>
+    <h2>Repositories Table</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Last Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="repos-table-body">
+        <tr>
+          <td colspan="3">Loading repositories...</td>
+        </tr>
+      </tbody>
+    </table>
     <h2>Results</h2>
     <pre id="output">Loading repositories...</pre>
     <script type="module">
@@ -116,20 +220,70 @@
       }
 
       class ViewRenderer {
-        constructor(outputElement) {
+        constructor(outputElement, tableBodyElement) {
           this.outputElement = outputElement;
+          this.tableBodyElement = tableBodyElement;
         }
 
         renderLoading(username) {
           this.outputElement.textContent = `Fetching repos for ${username}...`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="3">Fetching repos for ${username}...</td></tr>`;
         }
 
         renderData(data) {
           this.outputElement.textContent = JSON.stringify(data, null, 2);
+
+          if (!data || data.length === 0) {
+            this.tableBodyElement.innerHTML = `<tr><td colspan="3">No repositories found.</td></tr>`;
+            return;
+          }
+
+          this.tableBodyElement.innerHTML = data
+            .map((repo, index) => {
+              const formattedDate = new Date(
+                repo.updated_at,
+              ).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              });
+
+              return `
+                <tr>
+                  <td><a href="${repo.html_url}" target="_blank" rel="noopener noreferrer"><strong>${repo.name}</strong></a></td>
+                  <td>${formattedDate}</td>
+                  <td>
+                    <div class="actions-cell">
+                      <button class="action-btn secondary toggle-json-btn" data-index="${index}">View JSON</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr id="json-row-${index}" class="json-row hidden">
+                  <td colspan="3">
+                    <pre>${JSON.stringify(repo, null, 2)}</pre>
+                  </td>
+                </tr>
+              `;
+            })
+            .join("");
+
+          this.tableBodyElement
+            .querySelectorAll(".toggle-json-btn")
+            .forEach((button) => {
+              button.addEventListener("click", (event) => {
+                const { index } = event.currentTarget.dataset;
+                const jsonRow = document.getElementById(`json-row-${index}`);
+                const isHidden = jsonRow.classList.toggle("hidden");
+                event.currentTarget.textContent = isHidden
+                  ? "View JSON"
+                  : "Hide JSON";
+              });
+            });
         }
 
         renderError(message) {
           this.outputElement.textContent = `Error: ${message}`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="3">Error: ${message}</td></tr>`;
         }
       }
 
@@ -153,9 +307,10 @@
       const form = document.getElementById("search-form");
       const usernameInput = document.getElementById("username");
       const output = document.getElementById("output");
+      const tableBody = document.getElementById("repos-table-body");
 
       const apiService = new GitHubApiService();
-      const renderer = new ViewRenderer(output);
+      const renderer = new ViewRenderer(output, tableBody);
       const app = new AppController(apiService, renderer);
 
       form.addEventListener("submit", async (event) => {
