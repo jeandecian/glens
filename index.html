@@ -109,11 +109,14 @@
       }
 
       .action-btn {
+        display: inline-flex;
+        align-items: center;
         padding: 0.35rem 0.75rem;
         font-size: 0.85rem;
         border-radius: 6px;
         cursor: pointer;
         font-weight: 500;
+        text-decoration: none;
         transition:
           background-color 0.15s ease,
           border-color 0.15s ease;
@@ -127,6 +130,7 @@
 
       .action-btn.secondary:hover {
         background-color: var(--btn-sec-hover);
+        text-decoration: none;
       }
 
       .actions-cell {
@@ -351,12 +355,24 @@
 
               const rowId = repo.id || index;
 
+              let pagesUrl = null;
+              if (repo.homepage && repo.homepage.trim().startsWith("http")) {
+                pagesUrl = repo.homepage.trim();
+              } else if (repo.has_pages && repo.owner && repo.owner.login) {
+                pagesUrl = `https://${repo.owner.login}.github.io/${repo.name}/`;
+              }
+
+              const pageButtonHtml = pagesUrl
+                ? `<a href="${pagesUrl}" target="_blank" rel="noopener noreferrer" class="action-btn secondary">Open Page ↗</a>`
+                : "";
+
               return `
                 <tr>
                   <td><a href="${repo.html_url}" target="_blank" rel="noopener noreferrer"><strong>${repo.name}</strong></a></td>
                   <td>${formattedDate}</td>
                   <td>
                     <div class="actions-cell">
+                      ${pageButtonHtml}
                       <button class="action-btn secondary toggle-json-btn" data-row-id="${rowId}">View JSON</button>
                     </div>
                   </td>
