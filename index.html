@@ -54,6 +54,26 @@
         color: var(--text-color);
       }
 
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+
+      h1 {
+        margin: 0;
+      }
+
+      .rate-limit-badge {
+        font-size: 0.85rem;
+        font-weight: 500;
+        padding: 0.35rem 0.65rem;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+      }
+
       form {
         display: flex;
         align-items: center;
@@ -170,7 +190,12 @@
     </style>
   </head>
   <body>
-    <h1>Glens</h1>
+    <header>
+      <h1>Glens</h1>
+      <div id="rate-limit" class="rate-limit-badge">
+        API requests remaining (per hour): --
+      </div>
+    </header>
     <h2>Search</h2>
     <form id="search-form">
       <label for="username">GitHub Username:</label>
@@ -212,22 +237,60 @@
           const response = await fetch(
             `https://api.github.com/users/${username}/repos?per_page=100`,
           );
+
+          const rateLimit = {
+            remaining: response.headers.get("x-ratelimit-remaining"),
+            limit: response.headers.get("x-ratelimit-limit"),
+            reset: response.headers.get("x-ratelimit-reset"),
+          };
+
           if (!response.ok) {
-            throw new Error(`User not found or error (${response.status})`);
+            const error = new Error(
+              `User not found or error (${response.status})`,
+            );
+            error.rateLimit = rateLimit;
+            throw error;
           }
-          return await response.json();
+
+          const data = await response.json();
+          return { data, rateLimit };
         }
       }
 
       class ViewRenderer {
-        constructor(outputElement, tableBodyElement) {
+        constructor(outputElement, tableBodyElement, rateLimitElement) {
           this.outputElement = outputElement;
           this.tableBodyElement = tableBodyElement;
+          this.rateLimitElement = rateLimitElement;
+        }
+
+        renderRateLimit(rateLimit) {
+          if (rateLimit && rateLimit.remaining !== null) {
+            let resetText = "";
+            if (rateLimit.reset) {
+              const resetMs = Number.parseInt(rateLimit.reset, 10) * 1000;
+              const now = Date.now();
+              const diffMinutes = Math.max(
+                0,
+                Math.ceil((resetMs - now) / 60000),
+              );
+
+              const resetTimeStr = new Date(resetMs).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+              resetText = ` (resets in ${diffMinutes}m at ${resetTimeStr})`;
+            }
+
+            this.rateLimitElement.textContent = `API requests remaining: ${rateLimit.remaining} / ${rateLimit.limit}${resetText}`;
+          }
         }
 
         renderLoading(username) {
           this.outputElement.textContent = `Fetching repos for ${username}...`;
           this.tableBodyElement.innerHTML = `<tr><td colspan="3">Fetching repos for ${username}...</td></tr>`;
+          this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
         }
 
         renderData(data) {
@@ -296,9 +359,14 @@
         async loadUserRepos(username) {
           this.renderer.renderLoading(username);
           try {
-            const data = await this.fetcher.fetchRepositories(username);
+            const { data, rateLimit } =
+              await this.fetcher.fetchRepositories(username);
+            this.renderer.renderRateLimit(rateLimit);
             this.renderer.renderData(data);
           } catch (error) {
+            if (error.rateLimit) {
+              this.renderer.renderRateLimit(error.rateLimit);
+            }
             this.renderer.renderError(error.message);
           }
         }
@@ -308,9 +376,10 @@
       const usernameInput = document.getElementById("username");
       const output = document.getElementById("output");
       const tableBody = document.getElementById("repos-table-body");
+      const rateLimitBadge = document.getElementById("rate-limit");
 
       const apiService = new GitHubApiService();
-      const renderer = new ViewRenderer(output, tableBody);
+      const renderer = new ViewRenderer(output, tableBody, rateLimitBadge);
       const app = new AppController(apiService, renderer);
 
       form.addEventListener("submit", async (event) => {
