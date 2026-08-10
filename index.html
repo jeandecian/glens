@@ -108,6 +108,29 @@
         background-color: var(--btn-hover-bg);
       }
 
+      .stat-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+        display: inline-block;
+        min-width: 200px;
+      }
+
+      .stat-card .stat-label {
+        font-size: 0.85rem;
+        color: var(--text-color);
+        opacity: 0.8;
+        margin-bottom: 0.25rem;
+      }
+
+      .stat-card .stat-value {
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--text-color);
+      }
+
       .action-btn {
         display: inline-flex;
         align-items: center;
@@ -232,6 +255,11 @@
       />
       <button type="submit">Fetch Repos</button>
     </form>
+    <h2>Statistics</h2>
+    <div class="stat-card">
+      <div class="stat-label">Total Repositories</div>
+      <div class="stat-value" id="repo-count">0</div>
+    </div>
     <h2>Repositories Table</h2>
     <table>
       <thead>
@@ -286,10 +314,16 @@
       }
 
       class ViewRenderer {
-        constructor(outputElement, tableBodyElement, rateLimitElement) {
+        constructor(
+          outputElement,
+          tableBodyElement,
+          rateLimitElement,
+          repoCountElement,
+        ) {
           this.outputElement = outputElement;
           this.tableBodyElement = tableBodyElement;
           this.rateLimitElement = rateLimitElement;
+          this.repoCountElement = repoCountElement;
         }
 
         renderRateLimit(rateLimit) {
@@ -319,6 +353,7 @@
           this.outputElement.textContent = `Fetching repos for ${username}...`;
           this.tableBodyElement.innerHTML = `<tr><td colspan="3">Fetching repos for ${username}...</td></tr>`;
           this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
+          this.repoCountElement.textContent = "-";
         }
 
         renderSortIndicators(currentField, currentDirection) {
@@ -336,6 +371,7 @@
         }
 
         renderData(data) {
+          this.repoCountElement.textContent = data ? data.length : 0;
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
           if (!data || data.length === 0) {
@@ -403,6 +439,7 @@
         renderError(message) {
           this.outputElement.textContent = `Error: ${message}`;
           this.tableBodyElement.innerHTML = `<tr><td colspan="3">Error: ${message}</td></tr>`;
+          this.repoCountElement.textContent = "0";
         }
       }
 
@@ -472,9 +509,15 @@
       const output = document.getElementById("output");
       const tableBody = document.getElementById("repos-table-body");
       const rateLimitBadge = document.getElementById("rate-limit");
+      const repoCount = document.getElementById("repo-count");
 
       const apiService = new GitHubApiService();
-      const renderer = new ViewRenderer(output, tableBody, rateLimitBadge);
+      const renderer = new ViewRenderer(
+        output,
+        tableBody,
+        rateLimitBadge,
+        repoCount,
+      );
       const app = new AppController(apiService, renderer);
 
       document.querySelectorAll("th.sortable").forEach((th) => {
