@@ -734,6 +734,9 @@
       const patInput = document.getElementById("pat-token");
       const savePatCheckbox = document.getElementById("save-pat");
 
+      tableBody.innerHTML = `<tr><td colspan="4">Enter a username and click "Fetch Repos".</td></tr>`;
+      output.textContent = 'Enter a username and click "Fetch Repos".';
+
       const storedPat = localStorage.getItem("glens_github_pat");
       if (storedPat) {
         patInput.value = storedPat;
@@ -805,8 +808,6 @@
         event.preventDefault();
         await executeFetch();
       });
-
-      await executeFetch();
     </script>
   </body>
 </html>
