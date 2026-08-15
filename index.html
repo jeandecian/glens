@@ -716,7 +716,7 @@
           this.langLegendElement.innerHTML = legendHtml;
         }
 
-        renderData(data) {
+        renderData(data, searchedUsername = "") {
           const total = data ? data.length : 0;
           const privateCount = data ? data.filter((r) => r.private).length : 0;
           const publicCount = total - privateCount;
@@ -734,6 +734,8 @@
             return;
           }
 
+          const normalizedSearchUser = searchedUsername.trim().toLowerCase();
+
           this.tableBodyElement.innerHTML = data
             .map((repo, index) => {
               const formattedDate = new Date(
@@ -748,6 +750,15 @@
               const visibility = repo.private ? "Private" : "Public";
               const language = repo.language || "-";
 
+              const repoOwner =
+                repo.owner && repo.owner.login ? repo.owner.login : "";
+              const isDifferentOwner =
+                repoOwner && repoOwner.toLowerCase() !== normalizedSearchUser;
+
+              const displayName = isDifferentOwner
+                ? `<span style="opacity: 0.7; font-weight: normal;">${repoOwner}/</span>${repo.name}`
+                : repo.name;
+
               let pagesUrl = null;
               if (repo.homepage && repo.homepage.trim().startsWith("http")) {
                 pagesUrl = repo.homepage.trim();
@@ -761,7 +772,11 @@
 
               return `
                 <tr>
-                  <td><a href="${repo.html_url}" target="_blank" rel="noopener noreferrer"><strong>${repo.name}</strong></a></td>
+                  <td>
+                    <a href="${repo.html_url}" target="_blank" rel="noopener noreferrer">
+                      <strong>${displayName}</strong>
+                    </a>
+                  </td>
                   <td>${language}</td>
                   <td>${visibility}</td>
                   <td>${formattedDate}</td>
@@ -814,6 +829,7 @@
           this.repositories = [];
           this.sortField = "name";
           this.sortDirection = "asc";
+          this.currentUsername = "";
         }
 
         handleSortClick(field) {
@@ -853,10 +869,11 @@
             this.sortField,
             this.sortDirection,
           );
-          this.renderer.renderData(this.repositories);
+          this.renderer.renderData(this.repositories, this.currentUsername);
         }
 
         async loadUserRepos(username, token = null) {
+          this.currentUsername = username;
           this.renderer.renderLoading(username);
           try {
             const { data, rateLimit } = await this.fetcher.fetchRepositories(
