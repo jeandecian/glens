@@ -76,13 +76,69 @@
 
       form {
         display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
         width: 100%;
       }
 
-      input[type="text"] {
+      .search-main-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+      }
+
+      .auth-section {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .rate-limit-info {
+        font-size: 0.85rem;
+        line-height: 1.4;
+        opacity: 0.85;
+      }
+
+      .auth-options {
+        display: flex;
+        gap: 1.5rem;
+        align-items: center;
+        font-size: 0.9rem;
+      }
+
+      .auth-options label {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        cursor: pointer;
+      }
+
+      .pat-input-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .pat-input-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .pat-disclaimer {
+        font-size: 0.8rem;
+        opacity: 0.75;
+        line-height: 1.4;
+      }
+
+      input[type="text"],
+      input[type="password"] {
         flex: 1;
         padding: 0.5rem 0.75rem;
         border-radius: 6px;
@@ -221,8 +277,9 @@
         max-height: 300px;
       }
 
-      tr.hidden {
-        display: none;
+      tr.hidden,
+      .hidden {
+        display: none !important;
       }
 
       pre {
@@ -245,15 +302,95 @@
     </header>
     <h2>Search</h2>
     <form id="search-form">
-      <label for="username">GitHub Username:</label>
-      <input
-        type="text"
-        id="username"
-        value="jeandecian"
-        placeholder="Enter GitHub username"
-        required
-      />
-      <button type="submit">Fetch Repos</button>
+      <div class="search-main-row">
+        <label for="username">GitHub Username:</label>
+        <input
+          type="text"
+          id="username"
+          value="jeandecian"
+          placeholder="Enter GitHub username"
+          required
+        />
+        <button type="submit">Fetch Repos</button>
+      </div>
+      <div class="auth-section">
+        <div class="rate-limit-info">
+          <strong>Hourly Rate Limits:</strong> Unauthenticated requests are
+          capped at <strong>60 requests/hour</strong> per IP address.
+          Authenticated requests with a Personal Access Token (PAT) increase
+          your limit to <strong>5,000 requests/hour</strong>.
+        </div>
+        <div class="auth-options">
+          <strong>Authentication Mode:</strong>
+          <label>
+            <input
+              type="radio"
+              name="auth_mode"
+              value="unauthenticated"
+              checked
+            />
+            Unauthenticated
+          </label>
+          <label>
+            <input type="radio" name="auth_mode" value="authenticated" />
+            Authenticated
+          </label>
+        </div>
+        <div id="pat-container" class="pat-input-wrapper hidden">
+          <div class="pat-input-row">
+            <label for="pat-token" style="font-size: 0.9rem; font-weight: 500">
+              Personal Access Token:
+            </label>
+            <input
+              type="password"
+              id="pat-token"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+            />
+            <label style="font-size: 0.85rem; user-select: none">
+              <input type="checkbox" id="save-pat" /> Save token locally
+            </label>
+          </div>
+          <div class="pat-disclaimer">
+            <strong>Privacy & Security:</strong> Your Personal Access Token
+            (PAT) is used solely for direct requests from your browser to
+            <code>api.github.com</code> and is never transmitted to any third
+            party. If you check "Save token locally", it will be saved in your
+            browser's local storage; otherwise, it remains only in temporary
+            memory. Feel free to inspect or
+            <a
+              href="https://github.com/jeandecian/glens/blob/main/index.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              >audit the client script here ↗</a
+            >.
+            <br />
+            <strong>Required Scopes:</strong> No scopes are required for public
+            repositories. Select the <code>repo</code> scope to view private
+            repositories.
+            <br />
+            <strong>Visibility:</strong> A token lets you access your own
+            private repositories or those where you are an explicit
+            collaborator. It will <em>not</em> grant access to private
+            repositories of unrelated users.
+            <br />
+            <strong>Getting a PAT:</strong> Generate a token in your
+            <a
+              href="https://github.com/settings/tokens"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GitHub PAT Settings ↗</a
+            >
+            or check the
+            <a
+              href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic"
+              target="_blank"
+              rel="noopener noreferrer"
+              >official guide</a
+            >
+            for step-by-step instructions.
+          </div>
+        </div>
+      </div>
     </form>
     <h2>Statistics</h2>
     <div class="stat-card">
@@ -283,21 +420,44 @@
     <pre id="output">Loading repositories...</pre>
     <script type="module">
       class RepositoryFetcher {
-        async fetchRepositories(username) {
+        async fetchRepositories(username, token = null) {
           throw new Error("Method 'fetchRepositories()' must be implemented.");
         }
       }
 
       class GitHubApiService extends RepositoryFetcher {
-        async fetchRepositories(username) {
+        async fetchRepositories(username, token = null) {
+          const headers = token?.trim()
+            ? { Authorization: `Bearer ${token.trim()}` }
+            : {};
+          const isOwner = await this.isTokenOwner(username, headers);
+          const baseUrl = isOwner
+            ? "https://api.github.com/user/repos?per_page=100&type=all"
+            : `https://api.github.com/users/${username}/repos?per_page=100`;
+
+          return this.fetchAllPages(baseUrl, headers);
+        }
+
+        async isTokenOwner(username, headers) {
+          if (!headers.Authorization) return false;
+          try {
+            const res = await fetch("https://api.github.com/user", { headers });
+            if (!res.ok) return false;
+            const user = await res.json();
+            return user.login.toLowerCase() === username.toLowerCase();
+          } catch {
+            return false;
+          }
+        }
+
+        async fetchAllPages(baseUrl, headers) {
           let allRepos = [];
           let page = 1;
           let rateLimit = null;
 
           while (true) {
-            const response = await fetch(
-              `https://api.github.com/users/${username}/repos?per_page=100&page=${page}`,
-            );
+            const url = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}page=${page}`;
+            const response = await fetch(url, { headers });
 
             rateLimit = {
               remaining: response.headers.get("x-ratelimit-remaining"),
@@ -315,15 +475,11 @@
 
             const pageData = await response.json();
 
-            if (!Array.isArray(pageData) || pageData.length === 0) {
-              break;
-            }
+            if (!Array.isArray(pageData) || pageData.length === 0) break;
 
             allRepos = allRepos.concat(pageData);
 
-            if (pageData.length < 100) {
-              break;
-            }
+            if (pageData.length < 100) break;
 
             page++;
           }
@@ -506,11 +662,13 @@
           this.renderer.renderData(this.repositories);
         }
 
-        async loadUserRepos(username) {
+        async loadUserRepos(username, token = null) {
           this.renderer.renderLoading(username);
           try {
-            const { data, rateLimit } =
-              await this.fetcher.fetchRepositories(username);
+            const { data, rateLimit } = await this.fetcher.fetchRepositories(
+              username,
+              token,
+            );
             this.repositories = data || [];
             this.renderer.renderRateLimit(rateLimit);
             this.applySort();
@@ -530,6 +688,49 @@
       const rateLimitBadge = document.getElementById("rate-limit");
       const repoCount = document.getElementById("repo-count");
 
+      const authRadios = document.getElementsByName("auth_mode");
+      const patContainer = document.getElementById("pat-container");
+      const patInput = document.getElementById("pat-token");
+      const savePatCheckbox = document.getElementById("save-pat");
+
+      const storedPat = localStorage.getItem("glens_github_pat");
+      if (storedPat) {
+        patInput.value = storedPat;
+        savePatCheckbox.checked = true;
+        document.querySelector(
+          'input[name="auth_mode"][value="authenticated"]',
+        ).checked = true;
+        patContainer.classList.remove("hidden");
+      }
+
+      authRadios.forEach((radio) => {
+        radio.addEventListener("change", (e) => {
+          if (e.target.value === "authenticated") {
+            patContainer.classList.remove("hidden");
+          } else {
+            patContainer.classList.add("hidden");
+          }
+        });
+      });
+
+      savePatCheckbox.addEventListener("change", () => {
+        if (!savePatCheckbox.checked) {
+          localStorage.removeItem("glens_github_pat");
+        } else if (patInput.value.trim() !== "") {
+          localStorage.setItem("glens_github_pat", patInput.value.trim());
+        }
+      });
+
+      patInput.addEventListener("input", () => {
+        if (savePatCheckbox.checked) {
+          if (patInput.value.trim() !== "") {
+            localStorage.setItem("glens_github_pat", patInput.value.trim());
+          } else {
+            localStorage.removeItem("glens_github_pat");
+          }
+        }
+      });
+
       const apiService = new GitHubApiService();
       const renderer = new ViewRenderer(
         output,
@@ -545,15 +746,24 @@
         });
       });
 
+      const executeFetch = async () => {
+        const username = usernameInput.value.trim();
+        const isAuthenticated =
+          document.querySelector('input[name="auth_mode"]:checked').value ===
+          "authenticated";
+        const token = isAuthenticated ? patInput.value.trim() : null;
+
+        if (username) {
+          await app.loadUserRepos(username, token);
+        }
+      };
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const username = usernameInput.value.trim();
-        if (username) {
-          await app.loadUserRepos(username);
-        }
+        await executeFetch();
       });
 
-      await app.loadUserRepos(usernameInput.value);
+      await executeFetch();
     </script>
   </body>
 </html>
