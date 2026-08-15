@@ -164,14 +164,20 @@
         background-color: var(--btn-hover-bg);
       }
 
+      .stats-container {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+      }
+
       .stat-card {
         background-color: var(--card-bg);
         border: 1px solid var(--border-color);
         border-radius: 6px;
         padding: 1rem 1.25rem;
-        margin-bottom: 1.5rem;
-        display: inline-block;
-        min-width: 200px;
+        flex: 1;
+        min-width: 180px;
       }
 
       .stat-card .stat-label {
@@ -393,9 +399,19 @@
       </div>
     </form>
     <h2>Statistics</h2>
-    <div class="stat-card">
-      <div class="stat-label">Total Repositories</div>
-      <div class="stat-value" id="repo-count">0</div>
+    <div class="stats-container">
+      <div class="stat-card">
+        <div class="stat-label">Total Repositories</div>
+        <div class="stat-value" id="repo-count">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Public Repositories</div>
+        <div class="stat-value" id="public-repo-count">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Private Repositories</div>
+        <div class="stat-value" id="private-repo-count">0</div>
+      </div>
     </div>
     <h2>Repositories Table</h2>
     <table>
@@ -403,6 +419,9 @@
         <tr>
           <th class="sortable" data-sort="name">
             Title <span class="sort-icon" id="sort-name">↕</span>
+          </th>
+          <th class="sortable" data-sort="private">
+            Visibility <span class="sort-icon" id="sort-private">↕</span>
           </th>
           <th class="sortable" data-sort="updated_at">
             Last Updated <span class="sort-icon" id="sort-updated_at">↕</span>
@@ -412,7 +431,7 @@
       </thead>
       <tbody id="repos-table-body">
         <tr>
-          <td colspan="3">Loading repositories...</td>
+          <td colspan="4">Loading repositories...</td>
         </tr>
       </tbody>
     </table>
@@ -494,11 +513,15 @@
           tableBodyElement,
           rateLimitElement,
           repoCountElement,
+          publicRepoCountElement,
+          privateRepoCountElement,
         ) {
           this.outputElement = outputElement;
           this.tableBodyElement = tableBodyElement;
           this.rateLimitElement = rateLimitElement;
           this.repoCountElement = repoCountElement;
+          this.publicRepoCountElement = publicRepoCountElement;
+          this.privateRepoCountElement = privateRepoCountElement;
         }
 
         renderRateLimit(rateLimit) {
@@ -526,9 +549,11 @@
 
         renderLoading(username) {
           this.outputElement.textContent = `Fetching repos for ${username}...`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="3">Fetching repos for ${username}...</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="4">Fetching repos for ${username}...</td></tr>`;
           this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
           this.repoCountElement.textContent = "-";
+          this.publicRepoCountElement.textContent = "-";
+          this.privateRepoCountElement.textContent = "-";
         }
 
         renderSortIndicators(currentField, currentDirection) {
@@ -546,11 +571,18 @@
         }
 
         renderData(data) {
-          this.repoCountElement.textContent = data ? data.length : 0;
+          const total = data ? data.length : 0;
+          const privateCount = data ? data.filter((r) => r.private).length : 0;
+          const publicCount = total - privateCount;
+
+          this.repoCountElement.textContent = total;
+          this.publicRepoCountElement.textContent = publicCount;
+          this.privateRepoCountElement.textContent = privateCount;
+
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
           if (!data || data.length === 0) {
-            this.tableBodyElement.innerHTML = `<tr><td colspan="3">No repositories found.</td></tr>`;
+            this.tableBodyElement.innerHTML = `<tr><td colspan="4">No repositories found.</td></tr>`;
             return;
           }
 
@@ -565,6 +597,7 @@
               });
 
               const rowId = repo.id || index;
+              const visibility = repo.private ? "Private" : "Public";
 
               let pagesUrl = null;
               if (repo.homepage && repo.homepage.trim().startsWith("http")) {
@@ -580,6 +613,7 @@
               return `
                 <tr>
                   <td><a href="${repo.html_url}" target="_blank" rel="noopener noreferrer"><strong>${repo.name}</strong></a></td>
+                  <td>${visibility}</td>
                   <td>${formattedDate}</td>
                   <td>
                     <div class="actions-cell">
@@ -589,7 +623,7 @@
                   </td>
                 </tr>
                 <tr id="json-row-${rowId}" class="json-row hidden">
-                  <td colspan="3">
+                  <td colspan="4">
                     <pre>${JSON.stringify(repo, null, 2)}</pre>
                   </td>
                 </tr>
@@ -613,8 +647,10 @@
 
         renderError(message) {
           this.outputElement.textContent = `Error: ${message}`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="3">Error: ${message}</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="4">Error: ${message}</td></tr>`;
           this.repoCountElement.textContent = "0";
+          this.publicRepoCountElement.textContent = "0";
+          this.privateRepoCountElement.textContent = "0";
         }
       }
 
@@ -646,6 +682,9 @@
             if (this.sortField === "updated_at") {
               valA = new Date(valA).getTime();
               valB = new Date(valB).getTime();
+            } else if (typeof valA === "boolean") {
+              valA = valA ? 1 : 0;
+              valB = valB ? 1 : 0;
             } else if (typeof valA === "string") {
               return valA.localeCompare(valB) * modifier;
             }
@@ -687,6 +726,8 @@
       const tableBody = document.getElementById("repos-table-body");
       const rateLimitBadge = document.getElementById("rate-limit");
       const repoCount = document.getElementById("repo-count");
+      const publicRepoCount = document.getElementById("public-repo-count");
+      const privateRepoCount = document.getElementById("private-repo-count");
 
       const authRadios = document.getElementsByName("auth_mode");
       const patContainer = document.getElementById("pat-container");
@@ -737,6 +778,8 @@
         tableBody,
         rateLimitBadge,
         repoCount,
+        publicRepoCount,
+        privateRepoCount,
       );
       const app = new AppController(apiService, renderer);
 
