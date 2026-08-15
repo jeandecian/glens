@@ -168,7 +168,7 @@
         display: flex;
         gap: 1rem;
         flex-wrap: wrap;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1rem;
       }
 
       .stat-card {
@@ -191,6 +191,54 @@
         font-size: 1.75rem;
         font-weight: 600;
         color: var(--text-color);
+      }
+
+      .lang-chart-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .lang-chart-title {
+        font-size: 0.85rem;
+        color: var(--text-color);
+        opacity: 0.8;
+        margin-bottom: 0.75rem;
+      }
+
+      .lang-bar-container {
+        display: flex;
+        height: 10px;
+        border-radius: 5px;
+        overflow: hidden;
+        background-color: var(--border-color);
+        margin-bottom: 0.75rem;
+      }
+
+      .lang-bar-segment {
+        height: 100%;
+      }
+
+      .lang-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        font-size: 0.85rem;
+      }
+
+      .lang-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .lang-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
       }
 
       .action-btn {
@@ -412,6 +460,15 @@
         <div class="stat-label">Private Repositories</div>
         <div class="stat-value" id="private-repo-count">0</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Primary Language</div>
+        <div class="stat-value" id="top-language">N/A</div>
+      </div>
+    </div>
+    <div class="lang-chart-card">
+      <div class="lang-chart-title">Language Distribution</div>
+      <div class="lang-bar-container" id="lang-bar"></div>
+      <div class="lang-legend" id="lang-legend">No data available</div>
     </div>
     <h2>Repositories Table</h2>
     <table>
@@ -419,6 +476,9 @@
         <tr>
           <th class="sortable" data-sort="name">
             Title <span class="sort-icon" id="sort-name">↕</span>
+          </th>
+          <th class="sortable" data-sort="language">
+            Language <span class="sort-icon" id="sort-language">↕</span>
           </th>
           <th class="sortable" data-sort="private">
             Visibility <span class="sort-icon" id="sort-private">↕</span>
@@ -431,7 +491,7 @@
       </thead>
       <tbody id="repos-table-body">
         <tr>
-          <td colspan="4">Loading repositories...</td>
+          <td colspan="5">Loading repositories...</td>
         </tr>
       </tbody>
     </table>
@@ -508,20 +568,52 @@
       }
 
       class ViewRenderer {
-        constructor(
+        constructor({
           outputElement,
           tableBodyElement,
           rateLimitElement,
           repoCountElement,
           publicRepoCountElement,
           privateRepoCountElement,
-        ) {
+          topLanguageElement,
+          langBarElement,
+          langLegendElement,
+        }) {
           this.outputElement = outputElement;
           this.tableBodyElement = tableBodyElement;
           this.rateLimitElement = rateLimitElement;
           this.repoCountElement = repoCountElement;
           this.publicRepoCountElement = publicRepoCountElement;
           this.privateRepoCountElement = privateRepoCountElement;
+          this.topLanguageElement = topLanguageElement;
+          this.langBarElement = langBarElement;
+          this.langLegendElement = langLegendElement;
+
+          this.defaultLanguageColor = "#8b949e";
+          this.languagePalette = {
+            C: "#555555",
+            "C#": "#7355dd",
+            "C++": "#f34b7d",
+            CSS: "#663399",
+            Dart: "#e10098",
+            Go: "#00ADD8",
+            HTML: "#e34c26",
+            Java: "#b07219",
+            JavaScript: "#f1e05a",
+            Kotlin: "#F18E33",
+            PHP: "#4F5D95",
+            Python: "#3572A5",
+            R: "#0298C3",
+            Ruby: "#701516",
+            Rust: "#dea584",
+            Shell: "#89e051",
+            Swift: "#A35028",
+            TypeScript: "#3178c6",
+          };
+        }
+
+        getLanguageColor(langName) {
+          return this.languagePalette[langName] || this.defaultLanguageColor;
         }
 
         renderRateLimit(rateLimit) {
@@ -549,11 +641,14 @@
 
         renderLoading(username) {
           this.outputElement.textContent = `Fetching repos for ${username}...`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="4">Fetching repos for ${username}...</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="5">Fetching repos for ${username}...</td></tr>`;
           this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
           this.repoCountElement.textContent = "-";
           this.publicRepoCountElement.textContent = "-";
           this.privateRepoCountElement.textContent = "-";
+          this.topLanguageElement.textContent = "-";
+          this.langBarElement.innerHTML = "";
+          this.langLegendElement.textContent = "Loading...";
         }
 
         renderSortIndicators(currentField, currentDirection) {
@@ -570,6 +665,57 @@
           });
         }
 
+        renderLanguageDistribution(data) {
+          if (!data || data.length === 0) {
+            this.topLanguageElement.textContent = "N/A";
+            this.langBarElement.innerHTML = "";
+            this.langLegendElement.textContent = "No data available";
+            return;
+          }
+
+          const langCounts = {};
+          let totalWithLang = 0;
+
+          data.forEach((repo) => {
+            if (repo.language) {
+              langCounts[repo.language] = (langCounts[repo.language] || 0) + 1;
+              totalWithLang++;
+            }
+          });
+
+          if (totalWithLang === 0) {
+            this.topLanguageElement.textContent = "N/A";
+            this.langBarElement.innerHTML = "";
+            this.langLegendElement.textContent = "No primary languages found";
+            return;
+          }
+
+          const sortedLangs = Object.entries(langCounts).sort(
+            (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+          );
+
+          this.topLanguageElement.textContent = sortedLangs[0][0];
+
+          let barHtml = "";
+          let legendHtml = "";
+
+          sortedLangs.forEach(([lang, count]) => {
+            const percentage = ((count / totalWithLang) * 100).toFixed(1);
+            const color = this.getLanguageColor(lang);
+
+            barHtml += `<div class="lang-bar-segment" style="width: ${percentage}%; background-color: ${color};" title="${lang}: ${percentage}%"></div>`;
+            legendHtml += `
+              <div class="lang-legend-item">
+                <span class="lang-dot" style="background-color: ${color};"></span>
+                <strong>${lang}</strong>: ${percentage}% (${count})
+              </div>
+            `;
+          });
+
+          this.langBarElement.innerHTML = barHtml;
+          this.langLegendElement.innerHTML = legendHtml;
+        }
+
         renderData(data) {
           const total = data ? data.length : 0;
           const privateCount = data ? data.filter((r) => r.private).length : 0;
@@ -579,10 +725,12 @@
           this.publicRepoCountElement.textContent = publicCount;
           this.privateRepoCountElement.textContent = privateCount;
 
+          this.renderLanguageDistribution(data);
+
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
           if (!data || data.length === 0) {
-            this.tableBodyElement.innerHTML = `<tr><td colspan="4">No repositories found.</td></tr>`;
+            this.tableBodyElement.innerHTML = `<tr><td colspan="5">No repositories found.</td></tr>`;
             return;
           }
 
@@ -598,6 +746,7 @@
 
               const rowId = repo.id || index;
               const visibility = repo.private ? "Private" : "Public";
+              const language = repo.language || "-";
 
               let pagesUrl = null;
               if (repo.homepage && repo.homepage.trim().startsWith("http")) {
@@ -613,6 +762,7 @@
               return `
                 <tr>
                   <td><a href="${repo.html_url}" target="_blank" rel="noopener noreferrer"><strong>${repo.name}</strong></a></td>
+                  <td>${language}</td>
                   <td>${visibility}</td>
                   <td>${formattedDate}</td>
                   <td>
@@ -623,7 +773,7 @@
                   </td>
                 </tr>
                 <tr id="json-row-${rowId}" class="json-row hidden">
-                  <td colspan="4">
+                  <td colspan="5">
                     <pre>${JSON.stringify(repo, null, 2)}</pre>
                   </td>
                 </tr>
@@ -647,10 +797,13 @@
 
         renderError(message) {
           this.outputElement.textContent = `Error: ${message}`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="4">Error: ${message}</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="5">Error: ${message}</td></tr>`;
           this.repoCountElement.textContent = "0";
           this.publicRepoCountElement.textContent = "0";
           this.privateRepoCountElement.textContent = "0";
+          this.topLanguageElement.textContent = "N/A";
+          this.langBarElement.innerHTML = "";
+          this.langLegendElement.textContent = "Error loading languages";
         }
       }
 
@@ -685,7 +838,9 @@
             } else if (typeof valA === "boolean") {
               valA = valA ? 1 : 0;
               valB = valB ? 1 : 0;
-            } else if (typeof valA === "string") {
+            } else {
+              valA = (valA || "").toString().toLowerCase();
+              valB = (valB || "").toString().toLowerCase();
               return valA.localeCompare(valB) * modifier;
             }
 
@@ -728,13 +883,16 @@
       const repoCount = document.getElementById("repo-count");
       const publicRepoCount = document.getElementById("public-repo-count");
       const privateRepoCount = document.getElementById("private-repo-count");
+      const topLanguage = document.getElementById("top-language");
+      const langBar = document.getElementById("lang-bar");
+      const langLegend = document.getElementById("lang-legend");
 
       const authRadios = document.getElementsByName("auth_mode");
       const patContainer = document.getElementById("pat-container");
       const patInput = document.getElementById("pat-token");
       const savePatCheckbox = document.getElementById("save-pat");
 
-      tableBody.innerHTML = `<tr><td colspan="4">Enter a username and click "Fetch Repos".</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="5">Enter a username and click "Fetch Repos".</td></tr>`;
       output.textContent = 'Enter a username and click "Fetch Repos".';
 
       const storedPat = localStorage.getItem("glens_github_pat");
@@ -776,14 +934,17 @@
       });
 
       const apiService = new GitHubApiService();
-      const renderer = new ViewRenderer(
-        output,
-        tableBody,
-        rateLimitBadge,
-        repoCount,
-        publicRepoCount,
-        privateRepoCount,
-      );
+      const renderer = new ViewRenderer({
+        outputElement: output,
+        tableBodyElement: tableBody,
+        rateLimitElement: rateLimitBadge,
+        repoCountElement: repoCount,
+        publicRepoCountElement: publicRepoCount,
+        privateRepoCountElement: privateRepoCount,
+        topLanguageElement: topLanguage,
+        langBarElement: langBar,
+        langLegendElement: langLegend,
+      });
       const app = new AppController(apiService, renderer);
 
       document.querySelectorAll("th.sortable").forEach((th) => {
