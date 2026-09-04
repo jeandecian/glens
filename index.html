@@ -272,6 +272,25 @@
         align-items: center;
       }
 
+      .tag-badge {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.15rem 0.45rem;
+        margin: 0.1rem;
+        border-radius: 12px;
+        background-color: var(--btn-sec-bg);
+        color: var(--link-color);
+        border: 1px solid var(--border-color);
+      }
+
+      .tags-cell {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.2rem;
+        max-width: 250px;
+      }
+
       a {
         color: var(--link-color);
         text-decoration: none;
@@ -480,6 +499,9 @@
           <th class="sortable" data-sort="language">
             Language <span class="sort-icon" id="sort-language">↕</span>
           </th>
+          <th class="sortable" data-sort="topics">
+            Tags <span class="sort-icon" id="sort-topics">↕</span>
+          </th>
           <th class="sortable" data-sort="private">
             Visibility <span class="sort-icon" id="sort-private">↕</span>
           </th>
@@ -491,7 +513,7 @@
       </thead>
       <tbody id="repos-table-body">
         <tr>
-          <td colspan="5">Loading repositories...</td>
+          <td colspan="6">Loading repositories...</td>
         </tr>
       </tbody>
     </table>
@@ -641,7 +663,7 @@
 
         renderLoading(username) {
           this.outputElement.textContent = `Fetching repos for ${username}...`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="5">Fetching repos for ${username}...</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="6">Fetching repos for ${username}...</td></tr>`;
           this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
           this.repoCountElement.textContent = "-";
           this.publicRepoCountElement.textContent = "-";
@@ -730,7 +752,7 @@
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
           if (!data || data.length === 0) {
-            this.tableBodyElement.innerHTML = `<tr><td colspan="5">No repositories found.</td></tr>`;
+            this.tableBodyElement.innerHTML = `<tr><td colspan="6">No repositories found.</td></tr>`;
             return;
           }
 
@@ -749,6 +771,11 @@
               const rowId = repo.id || index;
               const visibility = repo.private ? "Private" : "Public";
               const language = repo.language || "-";
+
+              const topicsHtml =
+                Array.isArray(repo.topics) && repo.topics.length > 0
+                  ? `<div class="tags-cell">${repo.topics.map((tag) => '<span class="tag-badge">' + tag + "</span>").join("")}</div>`
+                  : "-";
 
               const repoOwner =
                 repo.owner && repo.owner.login ? repo.owner.login : "";
@@ -778,6 +805,7 @@
                     </a>
                   </td>
                   <td>${language}</td>
+                  <td>${topicsHtml}</td>
                   <td>${visibility}</td>
                   <td>${formattedDate}</td>
                   <td>
@@ -788,7 +816,7 @@
                   </td>
                 </tr>
                 <tr id="json-row-${rowId}" class="json-row hidden">
-                  <td colspan="5">
+                  <td colspan="6">
                     <pre>${JSON.stringify(repo, null, 2)}</pre>
                   </td>
                 </tr>
@@ -812,7 +840,7 @@
 
         renderError(message) {
           this.outputElement.textContent = `Error: ${message}`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="5">Error: ${message}</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="6">Error: ${message}</td></tr>`;
           this.repoCountElement.textContent = "0";
           this.publicRepoCountElement.textContent = "0";
           this.privateRepoCountElement.textContent = "0";
@@ -837,7 +865,8 @@
             this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
           } else {
             this.sortField = field;
-            this.sortDirection = field === "name" ? "asc" : "desc";
+            this.sortDirection =
+              field === "name" || field === "topics" ? "asc" : "desc";
           }
           this.applySort();
         }
@@ -848,7 +877,11 @@
             let valA = a[this.sortField];
             let valB = b[this.sortField];
 
-            if (this.sortField === "updated_at") {
+            if (this.sortField === "topics") {
+              valA = Array.isArray(valA) ? valA.join(", ").toLowerCase() : "";
+              valB = Array.isArray(valB) ? valB.join(", ").toLowerCase() : "";
+              return valA.localeCompare(valB) * modifier;
+            } else if (this.sortField === "updated_at") {
               valA = new Date(valA).getTime();
               valB = new Date(valB).getTime();
             } else if (typeof valA === "boolean") {
@@ -909,7 +942,7 @@
       const patInput = document.getElementById("pat-token");
       const savePatCheckbox = document.getElementById("save-pat");
 
-      tableBody.innerHTML = `<tr><td colspan="5">Enter a username and click "Fetch Repos".</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="6">Enter a username and click "Fetch Repos".</td></tr>`;
       output.textContent = 'Enter a username and click "Fetch Repos".';
 
       const storedPat = localStorage.getItem("glens_github_pat");
