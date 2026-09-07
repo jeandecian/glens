@@ -291,6 +291,32 @@
         max-width: 250px;
       }
 
+      .readme-badge {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 12px;
+        text-decoration: none;
+      }
+
+      .readme-badge.exists {
+        background-color: rgba(46, 160, 67, 0.15);
+        color: var(--btn-hover-bg);
+        border: 1px solid rgba(46, 160, 67, 0.4);
+      }
+
+      .readme-badge.exists:hover {
+        text-decoration: underline;
+      }
+
+      .readme-badge.missing {
+        background-color: var(--btn-sec-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        opacity: 0.75;
+      }
+
       a {
         color: var(--link-color);
         text-decoration: none;
@@ -502,6 +528,9 @@
           <th class="sortable" data-sort="topics">
             Tags <span class="sort-icon" id="sort-topics">↕</span>
           </th>
+          <th class="sortable" data-sort="hasReadme">
+            README <span class="sort-icon" id="sort-hasReadme">↕</span>
+          </th>
           <th class="sortable" data-sort="private">
             Visibility <span class="sort-icon" id="sort-private">↕</span>
           </th>
@@ -513,7 +542,7 @@
       </thead>
       <tbody id="repos-table-body">
         <tr>
-          <td colspan="6">Loading repositories...</td>
+          <td colspan="7">Loading repositories...</td>
         </tr>
       </tbody>
     </table>
@@ -528,15 +557,131 @@
 
       class GitHubApiService extends RepositoryFetcher {
         async fetchRepositories(username, token = null) {
-          const headers = token?.trim()
-            ? { Authorization: `Bearer ${token.trim()}` }
+          const cleanToken = token?.trim();
+          const headers = cleanToken
+            ? { Authorization: `Bearer ${cleanToken}` }
             : {};
+
+          if (cleanToken) {
+            try {
+              return await this.fetchViaGraphQL(username, cleanToken);
+            } catch (err) {
+              console.warn("GraphQL failed, falling back to REST:", err);
+            }
+          }
+
           const isOwner = await this.isTokenOwner(username, headers);
           const baseUrl = isOwner
             ? "https://api.github.com/user/repos?per_page=100&type=all"
             : `https://api.github.com/users/${username}/repos?per_page=100`;
 
-          return this.fetchAllPages(baseUrl, headers);
+          const { data, rateLimit } = await this.fetchAllPages(
+            baseUrl,
+            headers,
+          );
+
+          const dataWithReadme = await Promise.all(
+            data.map(async (repo) => {
+              const hasReadme = await this.checkReadmeCdn(
+                repo.owner.login,
+                repo.name,
+                repo.default_branch,
+              );
+              return { ...repo, hasReadme };
+            }),
+          );
+
+          return { data: dataWithReadme, rateLimit };
+        }
+
+        async fetchViaGraphQL(username, token) {
+          const query = `
+            query getReposWithReadme($username: String!) {
+              rateLimit {
+                remaining
+                limit
+                resetAt
+              }
+              user(login: $username) {
+                repositories(first: 100, orderBy: {field: UPDATED_AT, direction: DESC}) {
+                  nodes {
+                    id
+                    name
+                    description
+                    isPrivate
+                    htmlUrl: url
+                    updatedAt: updatedAt
+                    primaryLanguage { name }
+                    repositoryTopics { nodes { topic { name } } }
+                    owner { login }
+                    homepageUrl
+                    hasPage
+                    readme: object(expression: "HEAD:README.md") { id }
+                  }
+                }
+              }
+            }
+          `;
+
+          const res = await fetch("https://api.github.com/graphql", {
+            method: "POST",
+            headers: {
+              Authorization: `bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query, variables: { username } }),
+          });
+
+          if (!res.ok) throw new Error(`GraphQL HTTP Error: ${res.status}`);
+          const json = await res.json();
+
+          if (json.errors) throw new Error(json.errors[0].message);
+
+          const gqlRepos = json.data.user.repositories.nodes.map((r) => ({
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            private: r.isPrivate,
+            html_url: r.htmlUrl,
+            updated_at: r.updatedAt,
+            language: r.primaryLanguage?.name || null,
+            topics: r.repositoryTopics.nodes.map((t) => t.topic.name),
+            owner: { login: r.owner.login },
+            homepage: r.homepageUrl,
+            has_pages: r.hasPage,
+            hasReadme: r.readme !== null,
+          }));
+
+          const rateLimit = {
+            remaining: json.data.rateLimit.remaining,
+            limit: json.data.rateLimit.limit,
+            reset: Math.floor(
+              new Date(json.data.rateLimit.resetAt).getTime() / 1000,
+            ),
+          };
+
+          return { data: gqlRepos, rateLimit };
+        }
+
+        async checkReadmeCdn(owner, repo, defaultBranch = "main") {
+          try {
+            const res = await fetch(
+              `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/README.md`,
+              { method: "HEAD" },
+            );
+            if (res.ok) return true;
+
+            if (defaultBranch === "main") {
+              const fallbackRes = await fetch(
+                `https://raw.githubusercontent.com/${owner}/${repo}/master/README.md`,
+                { method: "HEAD" },
+              );
+              return fallbackRes.ok;
+            }
+            return false;
+          } catch {
+            return false;
+          }
         }
 
         async isTokenOwner(username, headers) {
@@ -663,7 +808,7 @@
 
         renderLoading(username) {
           this.outputElement.textContent = `Fetching repos for ${username}...`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="6">Fetching repos for ${username}...</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="7">Fetching repos for ${username}...</td></tr>`;
           this.rateLimitElement.textContent = `API requests remaining: Fetching...`;
           this.repoCountElement.textContent = "-";
           this.publicRepoCountElement.textContent = "-";
@@ -752,7 +897,7 @@
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
           if (!data || data.length === 0) {
-            this.tableBodyElement.innerHTML = `<tr><td colspan="6">No repositories found.</td></tr>`;
+            this.tableBodyElement.innerHTML = `<tr><td colspan="7">No repositories found.</td></tr>`;
             return;
           }
 
@@ -776,6 +921,10 @@
                 Array.isArray(repo.topics) && repo.topics.length > 0
                   ? `<div class="tags-cell">${repo.topics.map((tag) => '<span class="tag-badge">' + tag + "</span>").join("")}</div>`
                   : "-";
+
+              const readmeBadgeHtml = repo.hasReadme
+                ? `<a href="${repo.html_url}#readme" target="_blank" rel="noopener noreferrer" class="readme-badge exists">Yes ↗</a>`
+                : `<span class="readme-badge missing">No</span>`;
 
               const repoOwner =
                 repo.owner && repo.owner.login ? repo.owner.login : "";
@@ -806,6 +955,7 @@
                   </td>
                   <td>${language}</td>
                   <td>${topicsHtml}</td>
+                  <td>${readmeBadgeHtml}</td>
                   <td>${visibility}</td>
                   <td>${formattedDate}</td>
                   <td>
@@ -816,7 +966,7 @@
                   </td>
                 </tr>
                 <tr id="json-row-${rowId}" class="json-row hidden">
-                  <td colspan="6">
+                  <td colspan="7">
                     <pre>${JSON.stringify(repo, null, 2)}</pre>
                   </td>
                 </tr>
@@ -840,7 +990,7 @@
 
         renderError(message) {
           this.outputElement.textContent = `Error: ${message}`;
-          this.tableBodyElement.innerHTML = `<tr><td colspan="6">Error: ${message}</td></tr>`;
+          this.tableBodyElement.innerHTML = `<tr><td colspan="7">Error: ${message}</td></tr>`;
           this.repoCountElement.textContent = "0";
           this.publicRepoCountElement.textContent = "0";
           this.privateRepoCountElement.textContent = "0";
@@ -942,7 +1092,7 @@
       const patInput = document.getElementById("pat-token");
       const savePatCheckbox = document.getElementById("save-pat");
 
-      tableBody.innerHTML = `<tr><td colspan="6">Enter a username and click "Fetch Repos".</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="7">Enter a username and click "Fetch Repos".</td></tr>`;
       output.textContent = 'Enter a username and click "Fetch Repos".';
 
       const storedPat = localStorage.getItem("glens_github_pat");
