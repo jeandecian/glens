@@ -509,6 +509,10 @@
         <div class="stat-label">Primary Language</div>
         <div class="stat-value" id="top-language">N/A</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg. Time Since Update</div>
+        <div class="stat-value" id="avg-updated-age">N/A</div>
+      </div>
     </div>
     <div class="lang-chart-card">
       <div class="lang-chart-title">Language Distribution</div>
@@ -745,6 +749,7 @@
           topLanguageElement,
           langBarElement,
           langLegendElement,
+          avgUpdatedAgeElement,
         }) {
           this.outputElement = outputElement;
           this.tableBodyElement = tableBodyElement;
@@ -755,6 +760,7 @@
           this.topLanguageElement = topLanguageElement;
           this.langBarElement = langBarElement;
           this.langLegendElement = langLegendElement;
+          this.avgUpdatedAgeElement = avgUpdatedAgeElement;
 
           this.defaultLanguageColor = "#8b949e";
           this.languagePalette = {
@@ -814,6 +820,7 @@
           this.publicRepoCountElement.textContent = "-";
           this.privateRepoCountElement.textContent = "-";
           this.topLanguageElement.textContent = "-";
+          this.avgUpdatedAgeElement.textContent = "-";
           this.langBarElement.innerHTML = "";
           this.langLegendElement.textContent = "Loading...";
         }
@@ -830,6 +837,32 @@
               icon.textContent = "↕";
             }
           });
+        }
+
+        renderAverageUpdatedAge(data) {
+          if (!data || data.length === 0) {
+            this.avgUpdatedAgeElement.textContent = "N/A";
+            return;
+          }
+
+          const now = Date.now();
+          const totalDays = data.reduce((acc, repo) => {
+            const lastUpdatedMs = new Date(repo.updated_at).getTime();
+            const diffDays = (now - lastUpdatedMs) / (1000 * 60 * 60 * 24);
+            return acc + diffDays;
+          }, 0);
+
+          const avgDays = Math.round(totalDays / data.length);
+
+          if (avgDays < 30) {
+            this.avgUpdatedAgeElement.textContent = `${avgDays}d ago`;
+          } else if (avgDays < 365) {
+            const months = Math.round(avgDays / 30);
+            this.avgUpdatedAgeElement.textContent = `~${months}m ago`;
+          } else {
+            const years = (avgDays / 365).toFixed(1);
+            this.avgUpdatedAgeElement.textContent = `~${years}y ago`;
+          }
         }
 
         renderLanguageDistribution(data) {
@@ -893,6 +926,7 @@
           this.privateRepoCountElement.textContent = privateCount;
 
           this.renderLanguageDistribution(data);
+          this.renderAverageUpdatedAge(data);
 
           this.outputElement.textContent = JSON.stringify(data, null, 2);
 
@@ -995,6 +1029,7 @@
           this.publicRepoCountElement.textContent = "0";
           this.privateRepoCountElement.textContent = "0";
           this.topLanguageElement.textContent = "N/A";
+          this.avgUpdatedAgeElement.textContent = "N/A";
           this.langBarElement.innerHTML = "";
           this.langLegendElement.textContent = "Error loading languages";
         }
@@ -1084,6 +1119,7 @@
       const publicRepoCount = document.getElementById("public-repo-count");
       const privateRepoCount = document.getElementById("private-repo-count");
       const topLanguage = document.getElementById("top-language");
+      const avgUpdatedAge = document.getElementById("avg-updated-age");
       const langBar = document.getElementById("lang-bar");
       const langLegend = document.getElementById("lang-legend");
 
@@ -1142,6 +1178,7 @@
         publicRepoCountElement: publicRepoCount,
         privateRepoCountElement: privateRepoCount,
         topLanguageElement: topLanguage,
+        avgUpdatedAgeElement: avgUpdatedAge,
         langBarElement: langBar,
         langLegendElement: langLegend,
       });
